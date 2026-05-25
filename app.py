@@ -201,14 +201,53 @@ with tab4:
         st.plotly_chart(fig, use_container_width=True)
 
 with tab5:
-    high = summary[summary['riesgo_integral']=='Alto'].head(10)
-    medium = summary[summary['riesgo_integral']=='Medio'].head(10)
     st.markdown('### Mensaje para riesgo alto')
     st.code('Hola {nombre}, espero que estés bien. Identifiqué que tienes más de 72 horas sin actividad reciente o varios pendientes en Canvas. Te recomiendo ingresar hoy, revisar los módulos activos y priorizar las entregas vencidas o próximas. Estoy pendiente para apoyarte si tienes alguna dificultad.', language='text')
     st.markdown('### Mensaje para riesgo medio')
     st.code('Hola {nombre}, noté que tu actividad reciente o avance del curso requiere atención. Te recomiendo ingresar hoy a Canvas y avanzar con las actividades pendientes para mantenerte al día. Cualquier duda, estoy pendiente para apoyarte.', language='text')
-    st.markdown('### Estudiantes sugeridos para contactar hoy')
-    st.dataframe(pd.concat([high, medium]).head(20)[['nombre','correo','riesgo_integral','horas_sin_actividad','pendientes','atrasadas','accion_recomendada']], use_container_width=True, hide_index=True)
+
+    st.markdown('### Estudiantes para contactar')
+    st.info('Este apartado muestra estudiantes con riesgo integral Medio o Alto. Puedes ver todos los casos o limitar la lista a los casos más prioritarios del día.')
+
+    high_all = summary[summary['riesgo_integral'] == 'Alto'].copy()
+    medium_all = summary[summary['riesgo_integral'] == 'Medio'].copy()
+    contact_all = summary[summary['riesgo_integral'].isin(['Alto', 'Medio'])].copy()
+    contact_all = contact_all.sort_values(['puntaje_riesgo', 'horas_sin_actividad', 'pendientes', 'atrasadas'], ascending=[False, False, False, False])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric('Total riesgo alto', len(high_all))
+    c2.metric('Total riesgo medio', len(medium_all))
+    c3.metric('Total a contactar', len(contact_all))
+
+    modo_contacto = st.radio(
+        'Modo de visualización',
+        ['Mostrar todos los estudiantes en riesgo medio y alto', 'Mostrar solo prioritarios del día'],
+        horizontal=True
+    )
+
+    if modo_contacto == 'Mostrar solo prioritarios del día':
+        limite_contacto = st.slider('Cantidad máxima de estudiantes sugeridos', min_value=5, max_value=100, value=20, step=5)
+        contact_view = contact_all.head(limite_contacto)
+    else:
+        contact_view = contact_all
+
+    columnas_contacto = [
+        'nombre', 'correo', 'riesgo_integral', 'puntaje_riesgo',
+        'horas_sin_actividad', 'pendientes', 'atrasadas',
+        'porcentaje_avance', 'cumplimiento_horas', 'accion_recomendada'
+    ]
+    columnas_contacto = [c for c in columnas_contacto if c in contact_view.columns]
+
+    st.dataframe(contact_view[columnas_contacto], use_container_width=True, hide_index=True)
+
+    csv_contactos = contact_view[columnas_contacto].to_csv(index=False).encode('utf-8-sig')
+    st.download_button(
+        'Descargar listado de contactos CSV',
+        csv_contactos,
+        file_name=f'contactos_prioritarios_{course_id}.csv',
+        mime='text/csv',
+        use_container_width=True
+    )
 
 st.divider()
 st.subheader('Exportables')
