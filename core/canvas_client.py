@@ -82,5 +82,5 @@ class CanvasClient:
         return self.get(f'courses/{course_id}/students/submissions', params={
             'student_ids[]': 'all',
             'include[]': ['assignment', 'user'],
-            'grouped': 'false'
+            'grouped': False
         })

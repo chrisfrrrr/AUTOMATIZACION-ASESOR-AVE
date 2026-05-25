@@ -91,11 +91,23 @@ def normalize_assignments(assignments: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 def normalize_submissions(submissions: list[dict]) -> pd.DataFrame:
+    """Normaliza entregas de Canvas.
+
+    Canvas puede devolver /students/submissions de dos formas:
+    1) Lista plana: cada elemento es una entrega.
+    2) Lista agrupada por estudiante: cada elemento tiene user_id y una lista interna
+       llamada submissions.
+
+    Algunas instancias de Canvas devuelven la forma agrupada aunque se solicite
+    grouped=false. Por eso aquí se aplana automáticamente antes de construir
+    la tabla de entregas.
+    """
     rows = []
-    for s in submissions:
+
+    def add_row(s: dict, fallback_user_id=None):
         a = s.get('assignment') or {}
         rows.append({
-            'user_id': s.get('user_id'),
+            'user_id': s.get('user_id') or fallback_user_id,
             'assignment_id': s.get('assignment_id') or a.get('id'),
             'actividad': a.get('name'),
             'fecha_entrega': parse_dt(a.get('due_at')),
@@ -107,6 +119,23 @@ def normalize_submissions(submissions: list[dict]) -> pd.DataFrame:
             'puntos': a.get('points_possible') or 0,
             'excused': bool(s.get('excused')),
         })
+
+    for item in submissions or []:
+        if not isinstance(item, dict):
+            continue
+
+        # Respuesta agrupada por estudiante:
+        # {'user_id': 123, 'submissions': [{...}, {...}]}
+        if isinstance(item.get('submissions'), list):
+            fallback_user_id = item.get('user_id')
+            for sub in item.get('submissions') or []:
+                if isinstance(sub, dict):
+                    add_row(sub, fallback_user_id=fallback_user_id)
+            continue
+
+        # Respuesta plana: cada item ya es una entrega.
+        add_row(item)
+
     return pd.DataFrame(rows)
 
 def build_student_summary(enroll_df: pd.DataFrame, sub_df: pd.DataFrame, analysis_dt: datetime) -> pd.DataFrame:
