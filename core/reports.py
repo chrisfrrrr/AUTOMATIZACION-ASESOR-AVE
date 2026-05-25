@@ -216,11 +216,55 @@ def pdf_bytes(summary: pd.DataFrame, course_name: str, section_name: str, genera
     for col in cols:
         if col not in summary_view.columns:
             summary_view[col] = ''
-    view = summary_view[cols].head(35).copy() if not summary_view.empty else pd.DataFrame(columns=cols)
+
+    # IMPORTANTE:
+    # Antes el PDF usaba .head(35), por eso solo salían algunos estudiantes.
+    # Ahora el reporte PDF incluye TODOS los estudiantes en riesgo Alto y Medio.
+    # Si no hay estudiantes Alto/Medio, se muestra el listado general completo.
+    risk_order = {'Alto': 0, 'Medio': 1, 'Bajo': 2, 'Sin registro': 3, '': 4}
+    summary_view['_orden_riesgo'] = summary_view['riesgo_integral'].map(risk_order).fillna(4)
+
+    for numeric_col in ['puntaje_riesgo', 'horas_sin_actividad', 'pendientes', 'atrasadas']:
+        if numeric_col in summary_view.columns:
+            summary_view[numeric_col] = pd.to_numeric(summary_view[numeric_col], errors='coerce').fillna(0)
+
+    prioritized = summary_view[summary_view['riesgo_integral'].isin(['Alto', 'Medio'])].copy()
+    if prioritized.empty:
+        prioritized = summary_view.copy()
+
+    prioritized = prioritized.sort_values(
+        by=['_orden_riesgo', 'puntaje_riesgo', 'horas_sin_actividad', 'pendientes', 'atrasadas'],
+        ascending=[True, False, False, False, False]
+    )
+
+    alto_count = int((summary_view['riesgo_integral'] == 'Alto').sum()) if 'riesgo_integral' in summary_view.columns else 0
+    medio_count = int((summary_view['riesgo_integral'] == 'Medio').sum()) if 'riesgo_integral' in summary_view.columns else 0
+
+    story.append(Paragraph(
+        f'<b>Listado completo de seguimiento:</b> se incluyen todos los estudiantes en riesgo alto y medio. '
+        f'Riesgo alto: {alto_count}. Riesgo medio: {medio_count}. Total listado: {len(prioritized)}.',
+        styles['Small']
+    ))
+    story.append(Spacer(1, 6))
+
+    view = prioritized[cols].copy() if not prioritized.empty else pd.DataFrame(columns=cols)
     view.columns = ['Estudiante', 'Correo', 'Horas sin act.', 'Riesgo conexión', 'Horas', 'Pend.', 'Atras.', 'Avance %', 'Puntaje', 'Riesgo total', 'Acción']
+
+    # Formato compacto para permitir reportes grandes sin recortar estudiantes.
     data = [list(view.columns)] + view.fillna('').astype(str).values.tolist()
-    table = Table(data, repeatRows=1, colWidths=[1.45 * inch, 1.55 * inch, 0.7 * inch, 0.95 * inch, 0.55 * inch, 0.45 * inch, 0.45 * inch, 0.6 * inch, 0.55 * inch, 0.75 * inch, 1.35 * inch])
-    table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6c757d')), ('TEXTCOLOR', (0, 0), (-1, 0), colors.white), ('GRID', (0, 0), (-1, -1), 0.25, colors.lightgrey), ('FONTSIZE', (0, 0), (-1, -1), 6.5), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[1.45 * inch, 1.55 * inch, 0.7 * inch, 0.95 * inch, 0.55 * inch, 0.45 * inch, 0.45 * inch, 0.6 * inch, 0.55 * inch, 0.75 * inch, 1.35 * inch]
+    )
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6c757d')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.25, colors.lightgrey),
+        ('FONTSIZE', (0, 0), (-1, -1), 6.2),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7F9FB')]),
+    ]))
     story.append(table)
     story.append(Spacer(1, 8))
     story.append(Paragraph('Nota: el listado prioriza los estudiantes con mayor puntaje de riesgo. Los datos dependen de los permisos del token y de los registros disponibles en Canvas.', styles['Small']))
